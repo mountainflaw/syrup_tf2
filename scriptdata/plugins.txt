@@ -1,0 +1,8 @@
+noclip
+map
+slay
+skybox
+chat
+kickban
+conditions
+rcon
