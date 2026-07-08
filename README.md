@@ -25,6 +25,7 @@ Features:
 - Skybox: Allows you to modify the skybox along with automatic fog color changes. Fog values are persistent across connect/disconnect. Use `skylist` to view all available skyboxes.
 - Noclip: Toggle noclip movement on a specific player.
 - Chat: Adds `csay` command.
+- Scramble: Team scramble with `scramble` admin command.
 - Example: Example bare minimum plugin.
 
 ## Extended VScript API

@@ -76,7 +76,8 @@
  * - - Added menu support. See README.md for more info.
  * - - Added usermessage support. See README.md for more info.
  * - - Work on a new API for timers has started.
- * Added function GetPlayerEntityIndexFromUserID.
+ * - Added scramble admin command.
+ * - Added function GetPlayerEntityIndexFromUserID.
  */
 
 local adminsRaw = FileToString("admins.txt")

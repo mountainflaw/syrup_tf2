@@ -6,3 +6,4 @@ chat
 kickban
 conditions
 rcon
+scramble
