@@ -45,18 +45,49 @@ function GetPluginProperty(prop) {
     }
 }
 
+// Example menu functions
+
+::TestMyMenu <- function(caller) { // Menu functions MUST be explicitly global.
+	LogPublic("Test menu!")
+}
+
+::TestMyMenu2 <- function(caller, arg0) { // Caller is always the first arg, even for "0 arg provided" keys.
+	LogPublic(format("Test menu but with an arg! %d", arg0))
+}
+
 // All command functions have the arguments caller (client ID of command caller), and
 // argv, which is an array containing all of the command arguments in string format.
 
 function CommandExample(caller, argv) {
-    LogPublic("This is an example command.")
+    local test = VScriptMenu()
+
+    LogPrivate(caller, "Drawing menu!")
+    test.SetTime(4) // This is broken... It seems like TF2 just kills the menu after 3 seconds always. Did it change?
+    test.SetKeyFunc0("Test Menu", "NO_KEY") // Titles dont actually exist in the message protocol, they are just disabled keys.
+    test.SetKeyFunc0("Colored menu text!", "TestMyMenu") // Functions MUST be passed as a string of the name. The VScript interface in C++ REALLY does not like passing function handles.
+    test.SetKeyFunc0("This is a NO_KEY_DISABLED white line!", "NO_KEY_DISABLED") // Setting the function to "NO_KEY" will tell the dispatcher on the C++ side that this is actually a disabled key.
+    test.SetKeyFunc1("Arg Test", "TestMyMenu2", 69420) // You can pass any other primitive safely though.
+    test.SetKeyFunc0("This is just a line of text!", "NO_KEY") // Same as the "title" key
+    test.SetKeyFunc1("Arg Test Again!", "TestMyMenu2", 6769) // You can pass any other primitive safely though.
+    test.SetKeyFunc0("Exit", "EXIT") // Creates a white "Exit" key.
+    test.Dispatch(caller) // Dispatches and tells the VSP which client are we dispatching to.
+
+// Example usermessage
+
+    local msgTest = VScriptUserMessage()
+    msgTest.AddByte(0)
+    msgTest.AddFloat(50.0, 32)
+    msgTest.AddFloat(150.0, 32)
+    msgTest.AddFloat(10.0, 32)
+    LogPrivate(caller, "Shaking screen via usermessage!")
+    msgTest.Dispatch(caller, 10)
+
+    LogPrivate(caller, "This is an example command.")
 }
 
 // OnPluginStart() is called by Syrup on plugin load immediately.
 
 function OnPluginStart() {
-    LogPublic("Hello World.")
-
     // Tells Syrup to register a command called "test". Can be called in chat with "?test".
     // The last argument is what appears in the help menu as a description.
 

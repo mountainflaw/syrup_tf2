@@ -61,12 +61,22 @@
  * - - Added rcon plugin. Provides admins an rcon command to execute commands on the server commandline.
  * - Skybox:
  * - - Now supports 3D skybox fog.
- * - -Fog is set using netprops and is persistent through use of the player_spawn game event.
+ * - - Fog is set using netprops and is persistent through use of the player_spawn game event.
  * - Chat:
  * - - Fixed csay causing a VScript error when no arguments are provided.
  * - - Added whisper command to privately send a message to another player on the server.
  * - Noclip:
  * - - Fixed a VScript error on execution.
+ * Version 2.2:
+ * Added new plugins.
+ * - Scramble:
+ * - - Added scramble plugin. Accessible with the scramble command.
+ * Version 3.0:
+ * - New VScript APIs have been added through Syrup2!
+ * - - Added menu support. See README.md for more info.
+ * - - Added usermessage support. See README.md for more info.
+ * - - Work on a new API for timers has started.
+ * Added function GetPlayerEntityIndexFromUserID.
  */
 
 local adminsRaw = FileToString("admins.txt")
@@ -86,6 +96,24 @@ function IsClientAdmin(client, err) {
     return false
 }
 
+// port of https://github.com/Squinkz/vscript_timer
+
+class SyrupTimerUtils {
+    timeMode = null // 0 for countdown, 1 for ticks elapsed
+    timeStart = null
+    timeLeftOrTimeEnd = null
+    
+    constructor(m) {
+        mode = m
+    }
+
+    function GetTimeSeconds() {
+        if (timeMode) {
+	    
+	}
+    }
+}
+
 local commands = []
 
 class Command {
@@ -103,10 +131,10 @@ class Command {
         local clientID = GetClientID(caller) // we have to store these explicitly because vscript?
 	local clientName = GetClientName(caller)
         if (!admin || IsClientAdmin(caller, true)) {
-            printl(format("[Syrup] Player %s / %s executed command %s.", clientName, clientID, cmd))
+            Syrup2Printl(format("[Syrup] Player %s / %s executed command %s.", clientName, clientID, cmd))
             func(caller, argv)
         } else {
-            printl(format("[Syrup] Player %s / %s attempted to execute admin command %s.", clientName, clientID, cmd))
+            Syrup2Printl(format("[Syrup] Player %s / %s attempted to execute admin command %s.", clientName, clientID, cmd))
 	}
     }
 }
@@ -134,7 +162,6 @@ function GetFunctionName(func) {
 
 function RegisterCommand(cmd, func, desc) {
     commands.append(Command(cmd, func, desc, false))
-    printl(GetFunctionName(func))
     VScript_RegisterConsoleCommand(cmd, GetFunctionName(func));
 }
 
@@ -158,7 +185,7 @@ class Plugin {
         pA = pTable.GetPluginProperty(2)
         pD = pTable.GetPluginProperty(3)
 
-        printl(format("[Syrup] // Plugin %s %s (%s) by %s -- Loaded.", pN, pV, pD, pA))
+        Syrup2Printl(format("[Syrup] // Plugin %s %s (%s) by %s -- Loaded.", pN, pV, pD, pA))
     }
 }
 
@@ -171,6 +198,11 @@ for (local i = 0; i < plugin.len(); i++) {
 }
 
 local PlayerManager = Entities.FindByClassname(null, "tf_player_manager");
+
+function GetPlayerEntityIndexFromUserID(client) {
+    local ply = GetPlayerFromUserID(client)
+    return ply.entindex()
+}
 
 //::GetPlayerUserID <- function(player) {
 function GetPlayerUserID(ply) {
@@ -280,31 +312,48 @@ function CommandHelp(caller, argv) {
 
 // Wrapper for the Syrup Extensions VSP to execute forwarded concommands. The args are sent as a single string and formed into a list which is then passed as the real args to the command func.
 
-function ServerExecuteCommand(caller, funcName, arg)
-{
+function ServerExecuteCommand(caller, funcName, arg) {
     local argv = split(arg, " ");
 
-    for (local i = 0; i < commands.len(); i++)
-    {
+    for (local i = 0; i < commands.len(); i++) {
         local cmdObj = commands[i];
 
-        // Get the actual function name from metadata
         local extracted = GetFunctionName(cmdObj.func);
-        if (extracted == null)
+        if (extracted == null) {
             continue;
+	}
 
-        // Compare against the incoming function name
-        if (extracted == funcName)
-        {
+
+        if (extracted == funcName) {
             cmdObj.Execute(caller, argv);
             return;
         }
     }
 }
 
+// We use info_target to currently only grab the current tick, but this will probably change in the future to be used for grabbing more netprops.
+
+local function SpawnSyrupInfoTarget() {
+    local existing = Entities.FindByName(null, "syrup_info_target");
+    if (existing != null) { // if syrup was restarted
+        return existing;
+    }
+    local ent = SpawnEntityFromTable("info_target", { targetname = "syrup_info_target", origin = Vector(0, 0, 0), angles = Vector(0, 0, 0) });
+    return ent;
+}
+
+SpawnSyrupInfoTarget()
+
 RegisterCommand("help", CommandHelp, "Displays the help menu.")
 RegisterCommand("ls", CommandListPlayers, "Lists all currently connected players.")
 
+function CommandMenuTest(caller, args) {
+    local i = GetPlayerEntityIndexFromUserID(caller)
+    SendMyMenu(i)
+}
+
+RegisterCommand("menu", CommandMenuTest, "Lists all currently connected players.")
+
 __CollectEventCallbacks(this, "OnGameEvent_", "GameEventCallbacks", RegisterScriptGameEventListener)
 
-LogPublic("This server is running Syrup Next 2.1 by mountainflaw.")
+LogPublic("This server is running Syrup Next 3.0 by mountainflaw.")

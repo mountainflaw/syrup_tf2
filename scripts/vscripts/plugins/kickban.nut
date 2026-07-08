@@ -61,7 +61,6 @@ function CommandKick(caller, argv) {
     if (!ArgValidateInt(caller, argv[1])) {
         return
     }
-    printl(format("kickid %s %s", argv[1], argFinal))
     SendToConsoleServer(format("kickid %s %s", argv[1], argFinal))
 }
 

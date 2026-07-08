@@ -28,6 +28,9 @@ $Project "Syrup Srcds VSP"
 	$Folder	"Source Files"
 	{
 		$File	"syrup_vsp.cpp"
+		$File	"Timers.cpp"
+		$File	"Menu.cpp"
+		$File	"UserMessage.cpp"
 	}
 
 	$Folder	"Header Files"
@@ -51,6 +54,7 @@ $Project "Syrup Srcds VSP"
 		$File	"$SRCDIR\public\tier1\utlmemory.h"
 		$File	"$SRCDIR\public\tier1\utlvector.h"
 		$File	"$SRCDIR\public\vstdlib\vstdlib.h"
+		$File   "$SRCDIR\game\server\recipientfilter.h"
 	}
 
 	$Folder	"Link Libraries"

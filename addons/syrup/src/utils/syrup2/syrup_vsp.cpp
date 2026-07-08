@@ -8,22 +8,10 @@
 // Add new vpc to project_default.vpc
 // Build
 
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include <dlfcn.h>
-#include <unordered_map>
-#include <string>
-#include <sys/mman.h>
-
-#include "vscript/ivscript.h"
-
-#include "interface.h"
-#include "eiface.h"
-#include "engine/iserverplugin.h"
+#include "syrup_vsp.h"
 
 IVEngineServer* g_pEngine = nullptr;
-
+CGlobalVars *gpGlobals = nullptr;
 class CScriptManager;
 
 using CreateVM_t = IScriptVM* (*)(CScriptManager*, ScriptLanguage_t);
@@ -33,11 +21,12 @@ static void*      g_CreateVMAddr  = nullptr;
 static uint8_t    g_OrigBytes[16];
 static CreateVM_t g_Trampoline    = nullptr;
 
+
+IPlayerInfoManager *playerinfomanager = NULL;
 IScriptVM *g_pVM = NULL;
 
 // from IDA: offset of CScriptManager::CreateVM in vscript_srv.so
 static constexpr uintptr_t CREATEVM_OFFSET = 0xE130;
-
 
 //void test_vscript(void) {
 //	Msg("Print From C++!\n");
@@ -45,6 +34,18 @@ static constexpr uintptr_t CREATEVM_OFFSET = 0xE130;
 
 static std::unordered_map<std::string, std::string> g_CommandCallbacks;
 
+int UserIdToEntityIndex(int userID) {
+	for (int i = 1; i <= gpGlobals->maxClients; i++) {
+		edict_t *pEntity = g_pEngine->PEntityOfEntIndex(i);
+
+		if (g_pEngine->GetPlayerUserId(pEntity) == userID)
+		{
+			return i;
+		}
+	}
+
+	return -1;
+}
 
 // vscript gets really mad and just kills the whole server if we try to pass a function pointer from here
 // so we store it all as strings and do a lookup through the root table
@@ -56,12 +57,32 @@ void VScript_RegisterConsoleCommand(const char *cmd, const char *func) {
 	Msg("[Syrup2] Registering concommand %s -> %s\n", fullCmd.c_str(), func);
 }
 
+// vscript's printl loves to duplicate lines so we can just create a wrapper for Msg...
+
+void Syrup2Printl(const char *s) {
+	Msg("%s\n", s);
+}
+
 static IScriptVM* Hooked_CreateVM(CScriptManager* self, ScriptLanguage_t lang) {
 	IScriptVM* vm = g_Trampoline(self, lang);
 	g_pVM = vm;
 	//ScriptRegisterFunction(vm, test_vscript, "test");
 	//Msg("[Syrup2] Registered test_vscript\n");
 	ScriptRegisterFunction(vm, VScript_RegisterConsoleCommand, "Registers a console command from VScript.");
+	ScriptRegisterFunction(vm, Syrup2Printl, "Prints a string into the console via Syrup2. Avoids duplicate lines.");
+	ScriptRegisterFunction(vm, VScript_TimerGetTimeLeft, "Returns a Syrup2 timer's time left until function execution.");
+	ScriptRegisterFunction(vm, VScript_TimerGetStatus, "Returns a Syrup2 timer's status.");
+	ScriptRegisterFunction(vm, VScript_TimerPause, "Pauses a Syrup2 timer.");
+	ScriptRegisterFunction(vm, VScript_TimerResume, "Resumes a Syrup2 timer.");
+	ScriptRegisterFunction(vm, VScript_TimerSetTimeLeft, "Sets a Syrup2 timer's time left until function execution.");
+	ScriptRegisterFunction(vm, VScript_TimerAddToTime, "Adds time to a Syrup2 timer's time left until function execution.");
+	ScriptRegisterFunction(vm, VScript_TimerFindNameByIndex, "Returns a Syrup2 timer's index by name.");
+	ScriptRegisterFunction(vm, VScript_TimerFindIndexByName, "Returns a Syrup2 timer's name by index.");
+	ScriptRegisterFunction(vm, VScript_TimerCreate, "Creates a Syrup2 timer and returns its index.");
+	Msg("[Syrup2] Registering menu extension\n");
+	VScriptMenu_Register(vm);
+	Msg("[Syrup2] Registering usermessage extension\n");
+	VScriptUserMessage_Register(vm);
 	Msg("[Syrup2] self=%p lang=%d vm=%p\n", self, (int)lang, vm);
 	return vm;
 }
@@ -119,7 +140,7 @@ static bool InstallHook() {
 	p[0] = 0xE9;
 	*(int32_t*)&p[1] = (int32_t)((uintptr_t)&Hooked_CreateVM - ((uintptr_t)g_CreateVMAddr + 5));
 
-	Msg("[Syrup] Hook installed\n");
+	Msg("[Syrup2] Hook installed\n");
 	return true;
 }
 
@@ -140,6 +161,10 @@ class CCreateVMPlugin : public IServerPluginCallbacks {
 public:
 	bool Load(CreateInterfaceFn interfaceFactory, CreateInterfaceFn gameServerFactory) override {
 		g_pEngine = (IVEngineServer*)interfaceFactory(INTERFACEVERSION_VENGINESERVER, nullptr);
+		playerinfomanager = (IPlayerInfoManager *)gameServerFactory(INTERFACEVERSION_PLAYERINFOMANAGER,NULL);
+
+		gpGlobals = playerinfomanager->GetGlobalVars();
+
 		Msg("[Syrup2] Plugin Loaded\n");
 
 		if (!InstallHook()) {
@@ -154,7 +179,7 @@ public:
 	}
 
 	const char* GetPluginDescription() override {
-		return "Syrup VScript Extensions";
+		return "Syrup VScript Extensions, mountainflaw";
 	}
 
 
@@ -165,6 +190,23 @@ public:
 
 		const char* cmdName = cmd.Arg(0);
 		//Msg("Client command detected: %s\n", cmdName);
+
+		std::string cmpMenuSelect = "menuselect";
+
+		if (cmpMenuSelect == cmdName) {
+			int m = FindVScriptMenuIndexByUserID(g_pEngine->GetPlayerUserId(pEntity));
+
+			if (m == -1) {
+				return PLUGIN_CONTINUE;
+			}
+
+			if (!g_VScriptMenus[m].Execute(atoi(cmd.Arg(1)) - 1)) { // key doesnt exist, menu not closed
+				return PLUGIN_CONTINUE;
+			}
+
+			UndispatchAllVScriptMenusByUserID(g_pEngine->GetPlayerUserId(pEntity));
+			return PLUGIN_CONTINUE;
+		}
 
 		auto it = g_CommandCallbacks.find(cmdName);
 		if (it == g_CommandCallbacks.end()) {
@@ -197,14 +239,48 @@ public:
 		return PLUGIN_STOP;
 	}
 
+	void PreClientUpdate(bool simulating) {
+		Msg("Client update\n");
+	}
+
+	void GameFrame(bool simulating) override {
+		std::vector<unsigned int> clientsToErase;
+		if (simulating) {
+			for (int i = 0; i < g_VScriptMenus.size(); i++) {
+				if (g_VScriptMenus[i].TimerTick()) {
+					clientsToErase.emplace_back(g_VScriptMenus[i].client);
+				} else if (g_VScriptMenus[i].timer % (unsigned int)(66.6f * 5) == 0) { // sm does something like this to workaround the 4 seconds bug TODO: hardcoded tickrate
+					Msg("5 seconds\n");
+					g_VScriptMenus[i].Display();
+				}
+			}
+
+			for (int i = 0; i < clientsToErase.size(); i++) {
+				UndispatchAllVScriptMenusByUserID(clientsToErase[i]);
+			}
+
+			/*for (unsigned int i = 0; i < s_VScriptTimers.size(); i++) {
+				s_VScriptTimers[i].CountDown();
+				if (s_VScriptTimers[i].GetStatus() == TIMER_FINISHED) {
+					s_VScriptTimers.erase(s_VScriptTimers.begin() + i);
+				}
+			}*/
+		} 
+	}
+
 	void Pause() override {}
 	void UnPause() override {}
 	void LevelInit(const char*) override {}
 	void ServerActivate(edict_t*, int, int) override {}
-	void GameFrame(bool) override {}
-	void LevelShutdown() override {}
+	void LevelShutdown() override {
+		g_VScriptMenus.clear();
+		g_VScriptMenus.shrink_to_fit();
+	}
 	void ClientActive(edict_t*) override {}
-	void ClientDisconnect(edict_t*) override {}
+	void ClientDisconnect(edict_t* pEntity) override {
+		int client = g_pEngine->GetPlayerUserId(pEntity);
+		UndispatchAllVScriptMenusByUserID(client);
+	}
 	void ClientPutInServer(edict_t*, const char*) override {}
 	void SetCommandClient(int) override {}
 	void ClientSettingsChanged(edict_t*) override {}
@@ -213,6 +289,12 @@ public:
 	void OnQueryCvarValueFinished(QueryCvarCookie_t, edict_t*, EQueryCvarValueStatus, const char*, const char*) override {}
 	void OnEdictAllocated(edict_t*) override {}
 	void OnEdictFreed(const edict_t*) override {}
+};
+
+class VSPServerDLL : public IServerGameDLL {
+	void PreClientUpdate(bool simulating) override {
+		Msg("Test from Preclient update\n");
+	}
 };
 
 static CCreateVMPlugin g_Plugin;

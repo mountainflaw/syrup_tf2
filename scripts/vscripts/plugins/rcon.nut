@@ -53,7 +53,7 @@ function CommandRcon(caller, argv) {
         ArgErrTooFew(caller)
         return
     }
-    printl(format("[Syrup] Player %s / %s executed server command: %s", GetClientName(caller), GetClientID(caller), argFinal))
+    Syrup2Printl(format("[Syrup] Player %s / %s executed server command: %s", GetClientName(caller), GetClientID(caller), argFinal))
     SendToConsoleServer(argFinal)
 }
 
